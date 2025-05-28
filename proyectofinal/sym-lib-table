@@ -1,0 +1,5 @@
+(sym_lib_table
+  (version 7)
+  (lib (name "ESP32_NODEMCU")(type "KiCad")(uri "${KIPRJMOD}/ESP32_NODEMCU (1)/ESP32_NODEMCU.kicad_sym")(options "")(descr ""))
+  (lib (name "New_Library")(type "KiCad")(uri "${KIPRJMOD}/MP1584EN-master/MP1584EN-master/New_Library.kicad_sym")(options "")(descr ""))
+)
