@@ -2,4 +2,6 @@
   (version 7)
   (lib (name "ESP32_NODEMCU")(type "KiCad")(uri "${KIPRJMOD}/ESP32_NODEMCU (1)/ESP32_NODEMCU.kicad_sym")(options "")(descr ""))
   (lib (name "New_Library")(type "KiCad")(uri "${KIPRJMOD}/MP1584EN-master/MP1584EN-master/New_Library.kicad_sym")(options "")(descr ""))
+  (lib (name "Espressif")(type "KiCad")(uri "${KIPRJMOD}/kicad-libraries-main/symbols/Espressif.kicad_sym")(options "")(descr ""))
+  (lib (name "esp32_devkit_v1_doit")(type "Legacy")(uri "${KIPRJMOD}/kicad-5/symbols/esp32_devkit_v1_doit.lib")(options "")(descr ""))
 )
