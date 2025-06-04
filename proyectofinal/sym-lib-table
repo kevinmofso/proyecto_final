@@ -1,6 +1,7 @@
 (sym_lib_table
   (version 7)
-  (lib (name "esp32_devkit_v1_doit")(type "Legacy")(uri "${KIPRJMOD}/kicad-5/symbols/esp32_devkit_v1_doit.lib")(options "")(descr ""))
   (lib (name "mics-68141")(type "Legacy")(uri "${KIPRJMOD}/MICS-6814-KiCad-lib-master/mics-6814.lib")(options "")(descr ""))
   (lib (name "mics-6814")(type "Legacy")(uri "${KIPRJMOD}/MICS-6814-KiCad-lib-master/mics-6814.lib")(options "")(descr ""))
+  (lib (name "ESP32_LORA_V2.0")(type "KiCad")(uri "${KIPRJMOD}/ESP32_LORA_V2.0/ESP32_LORA_V2.0.kicad_sym")(options "")(descr ""))
+  (lib (name "SRD-05VDC-SL-C")(type "KiCad")(uri "${KIPRJMOD}/SRD-05VDC-SL-C/SRD-05VDC-SL-C.kicad_sym")(options "")(descr ""))
 )
