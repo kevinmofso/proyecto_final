@@ -1,0 +1,5 @@
+pegar en preferencias "https://resource.heltec.cn/download/package_heltec_esp32_index.json"
+ 
+instalar en librerias la carpeta de heltec
+
+instalar drivers, la carpeta de cp210x
