@@ -4,4 +4,5 @@
   (lib (name "mics-6814")(type "Legacy")(uri "${KIPRJMOD}/MICS-6814-KiCad-lib-master/mics-6814.lib")(options "")(descr ""))
   (lib (name "ESP32_LORA_V2.0")(type "KiCad")(uri "${KIPRJMOD}/ESP32_LORA_V2.0/ESP32_LORA_V2.0.kicad_sym")(options "")(descr ""))
   (lib (name "SRD-05VDC-SL-C")(type "KiCad")(uri "${KIPRJMOD}/SRD-05VDC-SL-C/SRD-05VDC-SL-C.kicad_sym")(options "")(descr ""))
+  (lib (name "2N2222A")(type "KiCad")(uri "${KIPRJMOD}/2N2222A/2N2222A.kicad_sym")(options "")(descr ""))
 )

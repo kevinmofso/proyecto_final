@@ -3,4 +3,5 @@
   (lib (name "MICS-6814")(type "KiCad")(uri "${KIPRJMOD}/MICS-6814-KiCad-lib-master/MICS-6814.pretty")(options "")(descr ""))
   (lib (name "ESP32_LORA_V2.0")(type "KiCad")(uri "${KIPRJMOD}/ESP32_LORA_V2.0")(options "")(descr ""))
   (lib (name "SRD-05VDC-SL-C")(type "KiCad")(uri "${KIPRJMOD}/SRD-05VDC-SL-C")(options "")(descr ""))
+  (lib (name "2N2222A")(type "KiCad")(uri "${KIPRJMOD}/2N2222A")(options "")(descr ""))
 )
