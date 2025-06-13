@@ -64,6 +64,7 @@
 			(psnegative no)
 			(psa4output no)
 			(plot_black_and_white yes)
+			(plotinvisibletext no)
 			(sketchpadsonfab no)
 			(plotpadnumbers no)
 			(hidednponfab no)
@@ -9016,7 +9017,7 @@
 				)
 			)
 		)
-		(property "Value" "30k"
+		(property "Value" "10k"
 			(at 5.16 0 90)
 			(layer "F.Fab")
 			(uuid "254e0c6b-bac4-4c36-80e1-3d88d63339a3")
@@ -10838,7 +10839,7 @@
 			(extension_offset 0.5)
 			(keep_text_aligned yes)
 		)
-		(gr_text "77,025"
+		(gr_text "77.025"
 			(at 198.9375 45.625 0)
 			(layer "Edge.Cuts")
 			(uuid "7a5481cd-59f0-486a-ac0f-5e18027670a5")
