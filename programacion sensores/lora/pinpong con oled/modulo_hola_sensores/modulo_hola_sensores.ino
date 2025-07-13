@@ -4,6 +4,12 @@
 #include <Wire.h>
 #include "HT_SSD1306Wire.h"
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#include "DHT.h"
+#define DHTPIN 27   // Pin donde está conectado el DHT22
+#define DHTTYPE DHT22   // Definimos el tipo de sensor
+DHT dht(DHTPIN, DHTTYPE);
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #ifdef WIRELESS_STICK_V3
 static SSD1306Wire display(0x3c, 500000, SDA_OLED, SCL_OLED, GEOMETRY_64_32, RST_OLED);
 #else
@@ -46,6 +52,7 @@ const uint32_t intervalo = 10000; // 10 segundos
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 void setup() {
   Serial.begin(115200);
+  dht.begin();        // Inicializa el sensor DHT
   Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
 
   RadioEvents.TxDone = OnTxDone;
@@ -82,7 +89,11 @@ void setup() {
 void loop() {
   //  si pasaron 10 segundos, transmitir "hola"
   if ((millis() - ultimo_envio) >= intervalo) {
-    strcpy(txpacket, "hola");
+   float h = dht.readHumidity();  // Lecturas DHT22
+      float t = dht.readTemperature();
+         txNumber++;
+snprintf(txpacket, BUFFER_SIZE, "hola %d - H:%.1f%% T:%.1fC", 
+             txNumber++, h, t);
 
 
     display.clear();
@@ -100,7 +111,6 @@ delay(2000);
       // Esto se usa si hay una transmisión manual, por ejemplo por recibir "chau"
 
       txNumber++;
-sprintf(txpacket, "respuesta %d", txNumber);  // Crea el mensaje "hello <número>"
 
       display.clear();
     
@@ -110,8 +120,8 @@ sprintf(txpacket, "respuesta %d", txNumber);  // Crea el mensaje "hello <número
 delay(2000);
       Radio.Send((uint8_t *)txpacket, strlen(txpacket));
       state = ESTADO_BAJO_CONSUMO;
-      break;
-
+    
+  break;
     case ESTADO_RECIBIR:
       display.clear();
       display.drawString(0, 0, "escuchando...");
