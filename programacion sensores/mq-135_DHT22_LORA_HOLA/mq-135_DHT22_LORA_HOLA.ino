@@ -149,7 +149,7 @@ float getCO2ppm(float rs_ro_ratio) {
 float getNH3ppm(float co2) {
   float log_rs_ro = (2.602 - log10(co2)) / 2.769;
   return (pow(10, (-1.8 * log_rs_ro + 1.5))*0.02);
-}
+} 
 
 void calibrarR0() {
   const int muestras = 100;
