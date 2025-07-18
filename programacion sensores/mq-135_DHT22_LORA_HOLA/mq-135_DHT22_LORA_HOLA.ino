@@ -4,6 +4,7 @@
 
 // MQ-135
 #define MQ135_PIN 36
+#define s12_pin 25
 #define RL_VALUE 10.0
 #define CO2_TARGET 400
 float R0 = 10.0;
@@ -31,7 +32,7 @@ char rxpacket[BUFFER_SIZE];
 
 bool lora_idle = true;
 unsigned long lastSendTime = 0;
-const unsigned long interval = 10000000;  // 10 segundos
+const unsigned long interval = 10000;  // 10 segundos
 
 unsigned long messageCount = 0;
 
@@ -43,7 +44,7 @@ void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
 
 void setup() {
   Serial.begin(115200);
-
+pinMode(s12_pin,INPUT);   
   // Init DHT22
   dht.setup(DHT_PIN, DHTesp::DHT22);
   Serial.println("DHT22 Initialized");
@@ -77,18 +78,20 @@ void loop() {
   float rs_ro_ratio = rs / R0;
 
   float co2 = getCO2ppm(rs_ro_ratio);
-  float nh3 = getNH3ppm(rs_ro_ratio);
+  float nh3 = getNH3ppm(co2);
+int sensorValue = analogRead(s12_pin);  // lectura cruda
+float sensorVoltage = sensorValue * (3.3 / 4095.0);  // conversión a voltaje el ADCdele sp32 tiene12 tine bits
+float uv_index = sensorVoltage * 10.0;  // índice UV
   //dht22
-
     TempAndHumidity data = dht.getTempAndHumidity();
     if (dht.getStatus() != DHTesp::ERROR_NONE) {
       Serial.println("DHT22 read failed: " + String(dht.getStatusString()));
       return;
     }
 
-   snprintf(txpacket, BUFFER_SIZE,
-             "{\"id\":%lu,\"t\":%.1f,\"h\":%.1f,\"co2\":%.1f,\"nh3\":%.1f}",
-             messageCount, data.temperature, data.humidity, co2, nh3);
+snprintf(txpacket, BUFFER_SIZE,
+         "{\"id\":%lu,\"t\":%.1f,\"h\":%.1f,\"co2\":%.1f,\"nh3\":%.1f,\"uv\":%.2f}",
+         messageCount, data.temperature, data.humidity, co2, nh3, uv_index);
 
     Serial.printf("Sending (%lu): %s\n", messageCount, txpacket);
     Radio.Send((uint8_t *)txpacket, strlen(txpacket));
@@ -143,8 +146,9 @@ float getCO2ppm(float rs_ro_ratio) {
   return pow(10, (-2.769 * log10(rs_ro_ratio) + 2.602));
 }
 
-float getNH3ppm(float rs_ro_ratio) {
-  return pow(10, (-1.8 * log10(rs_ro_ratio) + 1.5));
+float getNH3ppm(float co2) {
+  float log_rs_ro = (2.602 - log10(co2)) / 2.769;
+  return (pow(10, (-1.8 * log_rs_ro + 1.5))*0.02);
 }
 
 void calibrarR0() {
