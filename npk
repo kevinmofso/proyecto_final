@@ -1,0 +1,92 @@
+#include <SoftwareSerial.h>
+
+// Pines para controlar RS485
+#define RE 8
+#define DE 7
+
+// Comandos Modbus para leer NPK
+const byte nitro[] = {0x01, 0x03, 0x00, 0x1E, 0x00, 0x01, 0xE4, 0x0C};
+const byte phos[]  = {0x01, 0x03, 0x00, 0x1F, 0x00, 0x01, 0xB5, 0xCC};
+const byte pota[]  = {0x01, 0x03, 0x00, 0x20, 0x00, 0x01, 0x85, 0xC0};
+
+SoftwareSerial mod(2, 3); // RX, TX
+
+void setup() {
+  Serial.begin(9600);
+  mod.begin(9600);
+
+  pinMode(RE, OUTPUT);
+  pinMode(DE, OUTPUT);
+
+  digitalWrite(RE, LOW);
+  digitalWrite(DE, LOW);
+
+  delay(500);
+}
+
+void loop() {
+  int valN = readSensor(nitro);
+  delay(200);
+  int valP = readSensor(phos);
+  delay(200);
+  int valK = readSensor(pota);
+
+  Serial.print("Nitrogen: ");
+  Serial.print(valN);
+  Serial.println(" mg/kg");
+
+  Serial.print("Phosphorous: ");
+  Serial.print(valP);
+  Serial.println(" mg/kg");
+
+  Serial.print("Potassium: ");
+  Serial.print(valK);
+  Serial.println(" mg/kg");
+
+  Serial.println("-----------");
+  delay(2000);
+}
+
+// Función general para leer sensor con comando dado
+int readSensor(const byte* cmd) {
+  digitalWrite(DE, HIGH); // Transmitir
+  digitalWrite(RE, HIGH);
+  delay(10);
+
+  mod.write(cmd, 8);
+
+  digitalWrite(DE, LOW);  // Recibir
+  digitalWrite(RE, LOW);
+
+  unsigned long start = millis();
+  byte response[7];
+  byte index = 0;
+
+  while ((millis() - start) < 1000 && index < 7) {
+    if (mod.available()) {
+      response[index++] = mod.read();
+    }
+  }
+
+  // Mostrar datos recibidos en HEX para debugging
+  Serial.print("Raw data: ");
+  for (byte i = 0; i < index; i++) {
+    if (response[i] < 0x10) Serial.print("0");
+    Serial.print(response[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  if (index < 7) {
+    Serial.println("Error: Respuesta incompleta");
+    return -1;
+  }
+
+  if (response[0] != 0x01 || response[1] != 0x03) {
+    Serial.println("Error: Respuesta inválida");
+    return -1;
+  }
+
+  int value = (response[3] << 8) | response[4];
+  return value;
+}
