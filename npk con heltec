@@ -1,0 +1,103 @@
+#include <Arduino.h>
+
+// Pines control MAX485
+#define RE 22
+#define DE 23
+
+// Pines UART2 ESP32
+#define RXD2 16
+#define TXD2 17
+
+HardwareSerial mod(2); // UART2
+
+// Comandos Modbus NPK
+const byte nitro[] = {0x01, 0x03, 0x00, 0x1E, 0x00, 0x01, 0xE4, 0x0C};
+const byte phos[]  = {0x01, 0x03, 0x00, 0x1F, 0x00, 0x01, 0xB5, 0xCC};
+const byte pota[]  = {0x01, 0x03, 0x00, 0x20, 0x00, 0x01, 0x85, 0xC0};
+
+void setup() {
+  Serial.begin(115200);
+  mod.begin(9600, SERIAL_8N1, RXD2, TXD2);
+
+  pinMode(RE, OUTPUT);
+  pinMode(DE, OUTPUT);
+  digitalWrite(RE, LOW);
+  digitalWrite(DE, LOW);
+
+  delay(500);
+  Serial.println("Iniciando lectura NPK...");
+}
+
+void loop() {
+  int valN = readSensor(nitro);
+  delay(200);
+  int valP = readSensor(phos);
+  delay(200);
+  int valK = readSensor(pota);
+
+  Serial.print("Nitrogen: ");
+  Serial.print(valN);
+  Serial.println(" mg/kg");
+
+  Serial.print("Phosphorous: ");
+  Serial.print(valP);
+  Serial.println(" mg/kg");
+
+  Serial.print("Potassium: ");
+  Serial.print(valK);
+  Serial.println(" mg/kg");
+
+  Serial.println("-------------------");
+  delay(2000);
+}
+
+// Función general para leer un sensor con comando Modbus
+int readSensor(const byte* cmd) {
+  // Enviar comando
+  digitalWrite(DE, HIGH);
+  digitalWrite(RE, HIGH);
+  delay(2);
+
+  mod.write(cmd, 8);
+  mod.flush();
+  delay(2);
+
+  digitalWrite(DE, LOW);
+  digitalWrite(RE, LOW);
+
+  // Leer respuesta
+  unsigned long start = millis();
+  byte response[7];
+  byte index = 0;
+
+  while ((millis() - start) < 2000 && index < 7) {
+    if (mod.available()) {
+      response[index++] = mod.read();
+    }
+  }
+
+  // Mostrar raw data para depuración
+  Serial.print("Raw data (");
+  Serial.print(index);
+  Serial.print(" bytes): ");
+  for (byte i = 0; i < index; i++) {
+    if (response[i] < 0x10) Serial.print("0");
+    Serial.print(response[i], HEX);
+    Serial.print(" ");
+  }
+  Serial.println();
+
+  // Verificación básica
+  if (index < 7) {
+    Serial.println("Error: Respuesta incompleta");
+    return -1;
+  }
+  if (response[0] != 0x01 || response[1] != 0x03) {
+    Serial.println("Error: Respuesta inválida");
+    return -1;
+  }
+
+  // Convertir bytes a valor entero
+  int value = (response[3] << 8) | response[4];
+  return value;
+}
