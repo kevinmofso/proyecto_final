@@ -3,14 +3,12 @@
 #include "LoRaWan_APP.h"
 
 // ------------------ NPK ------------------
-// Pines control MAX485
 #define RE 23
 #define DE 22
 #define RXD2 16
 #define TXD2 17
 HardwareSerial mod(2); // UART2
 
-// Comandos Modbus NPK
 const byte nitro[] = {0x01,0x03,0x00,0x1E,0x00,0x01,0xE4,0x0C};
 const byte phos[]  = {0x01,0x03,0x00,0x1F,0x00,0x01,0xB5,0xCC};
 const byte pota[]  = {0x01,0x03,0x00,0x20,0x00,0x01,0x85,0xC0};
@@ -36,7 +34,7 @@ DHTesp dht;
 #define LORA_FIX_LENGTH_PAYLOAD_ON false
 #define LORA_IQ_INVERSION_ON false
 
-#define BUFFER_SIZE 150
+#define BUFFER_SIZE 200
 char txpacket[BUFFER_SIZE];
 char rxpacket[BUFFER_SIZE];
 
@@ -49,71 +47,79 @@ unsigned long messageCount = 0;
 static RadioEvents_t RadioEvents;
 void OnTxDone(void);
 void OnTxTimeout(void);
-void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssi, int8_t snr);
+void OnRxDone(uint8_t *payload,uint16_t size,int16_t rssi,int8_t snr);
 
 // ------------------ Funciones NPK ------------------
+uint16_t modbusCRC(const byte *buf, uint8_t len){
+  uint16_t crc = 0xFFFF;
+  for(uint8_t pos=0; pos<len; pos++){
+    crc ^= (uint16_t)buf[pos];
+    for(uint8_t i=0;i<8;i++){
+      if(crc & 0x0001) crc = (crc>>1)^0xA001;
+      else crc >>=1;
+    }
+  }
+  return crc;
+}
+
 int readSensor(const byte* cmd){
+  while(mod.available()) mod.read();
+
   digitalWrite(DE,HIGH);
   digitalWrite(RE,HIGH);
-  delay(2);
-
+  delay(5);
   mod.write(cmd,8);
   mod.flush();
-  delay(2);
-
+  delay(5);
   digitalWrite(DE,LOW);
   digitalWrite(RE,LOW);
 
-  unsigned long start = millis();
-  byte response[7];
-  byte index = 0;
-
-  while ((millis()-start)<2000 && index<7){
-    if(mod.available()){
-      response[index++] = mod.read();
+  byte buf[32]; uint8_t index=0;
+  unsigned long start=millis();
+  while(millis()-start<500){
+    while(mod.available()){
+      if(index<sizeof(buf)) buf[index++] = mod.read();
     }
   }
 
-  if(index<7) return -1;
-  if(response[0]!=0x01 || response[1]!=0x03) return -1;
+  for(uint8_t i=0;i+6<index;i++){
+    if(buf[i]==0x01 && buf[i+1]==0x03 && buf[i+2]==0x02){
+      uint16_t crc_calc = modbusCRC(buf+i,5);
+      uint16_t crc_recv = (uint16_t)buf[i+5]|((uint16_t)buf[i+6]<<8);
+      if(crc_calc!=crc_recv){
+        Serial.println("Error: CRC invalido");
+        continue;
+      }
+      int value = (buf[i+3]<<8)|buf[i+4];
+      return value;
+    }
+  }
 
-  int value = (response[3]<<8)|response[4];
-  return value;
+  Serial.println("Error: no se encontró bloque válido");
+  Serial.print("Datos recibidos ("); Serial.print(index); Serial.println(" bytes):");
+  for(uint8_t i=0;i<index;i++){
+    if(buf[i]<0x10) Serial.print("0");
+    Serial.print(buf[i],HEX); Serial.print(" ");
+  }
+  Serial.println();
+  return -1;
 }
 
 // ------------------ Funciones MQ-135/UV ------------------
-float getRS(int analogValue){
-  float voltage = analogValue*(3.3/4095.0);
-  return ((3.3-voltage)*RL_VALUE)/voltage;
-}
-
-float calcularR0(float rs, float co2_target){
-  float log_rs_ro = (2.602-log10(co2_target))/2.769;
-  float rs_ro = pow(10,log_rs_ro);
-  return rs/rs_ro;
-}
-
-float getCO2ppm(float rs_ro_ratio){
-  return pow(10,(-2.769*log10(rs_ro_ratio)+2.602));
-}
-
-float getNH3ppm(float co2){
-  float log_rs_ro = (2.602-log10(co2))/2.769;
-  return pow(10,(-1.8*log_rs_ro+1.5))*0.02;
-}
+float getRS(int analogValue){ return ((3.3 - analogValue*(3.3/4095.0))*RL_VALUE)/(analogValue*(3.3/4095.0)); }
+float calcularR0(float rs,float co2_target){ return rs / pow(10,(2.602 - log10(co2_target))/2.769); }
+float getCO2ppm(float rs_ro_ratio){ return pow(10,(-2.769*log10(rs_ro_ratio)+2.602)); }
+float getNH3ppm(float co2){ return pow(10,(-1.8*((2.602 - log10(co2))/2.769)+1.5))*0.02; }
 
 void calibrarR0(){
-  const int muestras = 100;
-  float rs_total = 0;
+  const int muestras=100; float rs_total=0;
   for(int i=0;i<muestras;i++){
-    int analogValue = analogRead(MQ135_PIN);
-    rs_total += getRS(analogValue);
+    rs_total += getRS(analogRead(MQ135_PIN));
     delay(30);
   }
-  float rs_avg = rs_total/muestras;
-  R0 = calcularR0(rs_avg,CO2_TARGET);
+  R0 = calcularR0(rs_total/muestras,CO2_TARGET);
   Serial.println("=== Calibracion MQ-135 ===");
-  Serial.print("RS promedio: "); Serial.println(rs_avg,2);
+  Serial.print("RS promedio: "); Serial.println(rs_total/muestras,2);
   Serial.print("R0 calibrado: "); Serial.println(R0,2);
 }
 
@@ -121,39 +127,27 @@ void calibrarR0(){
 void setup(){
   Serial.begin(115200);
 
-  // NPK
   mod.begin(9600,SERIAL_8N1,RXD2,TXD2);
-  pinMode(RE,OUTPUT);
-  pinMode(DE,OUTPUT);
-  digitalWrite(RE,LOW);
-  digitalWrite(DE,LOW);
+  pinMode(RE,OUTPUT); pinMode(DE,OUTPUT); digitalWrite(RE,LOW); digitalWrite(DE,LOW);
 
-  // DHT
   dht.setup(DHT_PIN,DHTesp::DHT22);
 
-  // MQ135/UV
   pinMode(s12_pin,INPUT);
   calibrarR0();
 
-  // LoRa
   Mcu.begin(HELTEC_BOARD,SLOW_CLK_TPYE);
   RadioEvents.TxDone = OnTxDone;
   RadioEvents.TxTimeout = OnTxTimeout;
   RadioEvents.RxDone = OnRxDone;
-
   Radio.Init(&RadioEvents);
   Radio.SetChannel(RF_FREQUENCY);
-  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER, 0, LORA_BANDWIDTH,
-                    LORA_SPREADING_FACTOR, LORA_CODINGRATE,
-                    LORA_PREAMBLE_LENGTH, LORA_FIX_LENGTH_PAYLOAD_ON,
-                    true, 0, 0, LORA_IQ_INVERSION_ON, 3000);
-  Radio.Rx(0);  // start listening
+  Radio.SetTxConfig(MODEM_LORA, TX_OUTPUT_POWER,0,LORA_BANDWIDTH,LORA_SPREADING_FACTOR,LORA_CODINGRATE,LORA_PREAMBLE_LENGTH,LORA_FIX_LENGTH_PAYLOAD_ON,true,0,0,LORA_IQ_INVERSION_ON,3000);
+  Radio.Rx(0);
 }
 
 // ------------------ Loop ------------------
 void loop(){
   Radio.IrqProcess();
-
   unsigned long currentTime = millis();
   if(lora_idle && (currentTime - lastSendTime >= interval)){
     lastSendTime = currentTime;
@@ -165,28 +159,39 @@ void loop(){
     int valK = readSensor(pota);
 
     // --- MQ-135 ---
+    float rs=-1, rs_ro_ratio=-1, co2=-1, nh3=-1;
     int analogValue = analogRead(MQ135_PIN);
-    float rs = getRS(analogValue);
-    float rs_ro_ratio = rs/R0;
-    float co2 = getCO2ppm(rs_ro_ratio);
-    float nh3 = getNH3ppm(co2);
+    if(analogValue>=0){
+      rs = getRS(analogValue);
+      rs_ro_ratio = rs/R0;
+      co2 = getCO2ppm(rs_ro_ratio);
+      nh3 = getNH3ppm(co2);
+    } else {
+      Serial.println("MQ135 read error");
+    }
 
     // --- UV ---
+    float uv_index=-1;
     int sensorValue = analogRead(s12_pin);
-    float sensorVoltage = sensorValue*(3.3/4095.0);
-    float uv_index = sensorVoltage*10.0;
+    if(sensorValue>=0) uv_index = (sensorValue*(3.3/4095.0))*10.0;
+    else Serial.println("UV sensor read error");
 
     // --- DHT22 ---
     TempAndHumidity data = dht.getTempAndHumidity();
+    float temp=-999, hum=-999;
+    String dht_error="";
     if(dht.getStatus()!=DHTesp::ERROR_NONE){
+      dht_error="DHT error";
       Serial.println("DHT22 read failed: "+String(dht.getStatusString()));
-      return;
+    } else {
+      temp = data.temperature;
+      hum  = data.humidity;
     }
 
     // --- Crear paquete JSON ---
     snprintf(txpacket,BUFFER_SIZE,
-      "{\"id\":%lu,\"t\":%.1f,\"h\":%.1f,\"co2\":%.1f,\"nh3\":%.1f,\"uv\":%.2f,\"N\":%d,\"P\":%d,\"K\":%d}",
-      messageCount,data.temperature,data.humidity,co2,nh3,uv_index,valN,valP,valK);
+      "{\"id\":%lu,\"t\":%.1f,\"h\":%.1f,\"co2\":%.1f,\"nh3\":%.1f,\"uv\":%.2f,\"N\":%d,\"P\":%d,\"K\":%d,\"DHT\":\"%s\"}",
+      messageCount,temp,hum,co2,nh3,uv_index,valN,valP,valK,dht_error.c_str());
 
     Serial.printf("Sending (%lu): %s\n",messageCount,txpacket);
     Radio.Send((uint8_t*)txpacket,strlen(txpacket));
@@ -195,12 +200,8 @@ void loop(){
 }
 
 // ------------------ Callbacks LoRa ------------------
-void OnTxDone(void){
-   Serial.println("LoRa TX done"); lora_idle=true; Radio.Rx(0);
-   }
-void OnTxTimeout(void){
-   Serial.println("LoRa TX timeout"); lora_idle=true; Radio.Rx(0);
-   }
+void OnTxDone(void){ Serial.println("LoRa TX done"); lora_idle=true; Radio.Rx(0); }
+void OnTxTimeout(void){ Serial.println("LoRa TX timeout"); lora_idle=true; Radio.Rx(0); }
 void OnRxDone(uint8_t *payload,uint16_t size,int16_t rssi,int8_t snr){
   memcpy(rxpacket,payload,size);
   rxpacket[size]='\0';
