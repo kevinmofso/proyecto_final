@@ -64,7 +64,6 @@
 			(psnegative no)
 			(psa4output no)
 			(plot_black_and_white yes)
-			(plotinvisibletext no)
 			(sketchpadsonfab no)
 			(plotpadnumbers no)
 			(hidednponfab no)
@@ -4442,6 +4441,17 @@
 			(uuid "f8d73b68-cfeb-47a3-8bc0-ee21887b2d8e")
 		)
 		(embedded_fonts no)
+		(model "${KIPRJMOD}/SRD-05VDC-SL-C/srd-05vdc-sl-c.stp"
+			(offset
+				(xyz 0 0 0)
+			)
+			(scale
+				(xyz 1 1 1)
+			)
+			(rotate
+				(xyz -90 -0 -0)
+			)
+		)
 	)
 	(footprint "Package_DIP:DIP-4_W7.62mm"
 		(layer "F.Cu")
