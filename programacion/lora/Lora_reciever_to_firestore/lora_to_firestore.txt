@@ -1,0 +1,144 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ESP32Time.h>
+#include <ArduinoJson.h>
+#include "LoRaWan_APP.h"
+
+// ---------- CONFIGURACIÓN WIFI Y FIRESTORE ----------
+const char* ssid = "MECA-IoT";
+const char* password = "IoT$2026";
+
+// URL base del proyecto (sin el nombre del documento)
+String baseUrl = "https://firestore.googleapis.com/v1/projects/harvest-int2/databases/(default)/documents/sensors/";
+
+ESP32Time rtc;
+int GMT = -3;
+
+// ---------- CONFIGURACIÓN LORA ----------
+#define RF_FREQUENCY        915000000 // Hz
+#define LORA_BANDWIDTH      0
+#define LORA_SPREADING_FACTOR 7
+#define LORA_CODINGRATE     1
+#define LORA_PREAMBLE_LENGTH 8
+#define LORA_SYMBOL_TIMEOUT 0
+#define LORA_FIX_LENGTH_PAYLOAD_ON false
+#define LORA_IQ_INVERSION_ON false
+#define BUFFER_SIZE         150
+
+char rxpacket[BUFFER_SIZE];
+static RadioEvents_t RadioEvents;
+bool lora_idle = true;
+
+// ---------- FUNCIONES ----------
+void syncTimeWithGMT(int gmtOffsetHours) {
+  long gmtOffset_sec = gmtOffsetHours * 3600;
+  configTime(gmtOffset_sec, 0, "pool.ntp.org");
+  struct tm timeinfo;
+  if (getLocalTime(&timeinfo)) {
+    rtc.setTimeStruct(timeinfo);
+    Serial.println("✅ Hora sincronizada desde NTP");
+  } else {
+    Serial.println("⚠️ Fallo al obtener la hora desde NTP");
+  }
+}
+
+void sendToFirestore(JsonDocument& doc) {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("⚠️ WiFi desconectado, no se puede enviar");
+    return;
+  }
+
+  // Crear nombre del documento = timestamp actual
+  String timestamp = rtc.getTime("%Y-%m-%dT%H:%M:%S")+"-03:00";
+  String url = baseUrl + timestamp;  // nombre del documento = fecha y hora
+
+  HTTPClient http;
+  http.begin(url);
+  http.addHeader("Content-Type", "application/json");
+
+  // Crear cuerpo JSON para Firestore
+  String body = "{ \"fields\": {";
+  body += "\"id\": {\"integerValue\": " + String((int)doc["id"]) + "},";
+  body += "\"temperature\": {\"doubleValue\": " + String((float)doc["t"]) + "},";
+  body += "\"humidity\": {\"doubleValue\": " + String((float)doc["h"]) + "},";
+  body += "\"co2\": {\"doubleValue\": " + String((float)doc["co2"]) + "},";
+  body += "\"nh3\": {\"doubleValue\": " + String((float)doc["nh3"]) + "},";
+  body += "\"uv\": {\"doubleValue\": " + String((float)doc["uv"]) + "},";
+  body += "\"N\": {\"integerValue\": " + String((int)doc["N"]) + "},";
+  body += "\"P\": {\"integerValue\": " + String((int)doc["P"]) + "},";
+  body += "\"K\": {\"integerValue\": " + String((int)doc["K"]) + "},";
+  body += "\"DHT\": {\"stringValue\": \"" + String((const char*)doc["DHT"]) + "\"},";
+  body += "\"timestamp\": {\"timestampValue\": \"" + timestamp + "\"}";
+  body += "}}";
+
+  int httpResponseCode = http.PATCH(body);  // PATCH = crear/actualizar documento con nombre específico
+  Serial.printf(" Firestore Response: %d\n", httpResponseCode);
+  if (httpResponseCode > 0) {
+    Serial.println(" Datos enviados correctamente");
+  } else {
+    Serial.println(" Error al enviar datos a Firestore");
+  }
+
+  http.end();
+}
+
+void OnRxDone(uint8_t *payload, uint16_t size, int16_t rssiValue, int8_t snr) {
+  memcpy(rxpacket, payload, size);
+  rxpacket[size] = '\0';
+  Radio.Sleep();
+  lora_idle = true;
+
+  Serial.printf("\n Paquete recibido: %s\nRSSI: %d dBm | Bytes: %d\n", rxpacket, rssiValue, size);
+
+  StaticJsonDocument<256> doc;
+  DeserializationError error = deserializeJson(doc, rxpacket);
+
+  if (error) {
+    Serial.print(" Error parseando JSON: ");
+    Serial.println(error.c_str());
+    return;
+  }
+
+  Serial.printf("ID: %d | T: %.1f°C | H: %.1f%% | CO2: %.1f | NH3: %.1f | UV: %.2f | N:%d | P:%d | K:%d | DHT:%s\n",
+    (int)doc["id"], (float)doc["t"], (float)doc["h"], (float)doc["co2"], (float)doc["nh3"],
+    (float)doc["uv"], (int)doc["N"], (int)doc["P"], (int)doc["K"], (const char*)doc["DHT"]);
+
+  sendToFirestore(doc);
+}
+
+// ---------- SETUP ----------
+void setup() {
+  Serial.begin(115200);
+  Mcu.begin(HELTEC_BOARD, SLOW_CLK_TPYE);
+
+  // Conexión WiFi
+  WiFi.begin(ssid, password);
+  Serial.println(" Conectando a WiFi...");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(1000);
+    Serial.print(".");
+  }
+  Serial.println("\n WiFi conectado!");
+  syncTimeWithGMT(GMT);
+
+  // Inicializar LoRa
+  RadioEvents.RxDone = OnRxDone;
+  Radio.Init(&RadioEvents);
+  Radio.SetChannel(RF_FREQUENCY);
+  Radio.SetRxConfig(MODEM_LORA, LORA_BANDWIDTH, LORA_SPREADING_FACTOR,
+                    LORA_CODINGRATE, 0, LORA_PREAMBLE_LENGTH,
+                    LORA_SYMBOL_TIMEOUT, LORA_FIX_LENGTH_PAYLOAD_ON,
+                    0, true, 0, 0, LORA_IQ_INVERSION_ON, true);
+
+  lora_idle = true;
+  Serial.println(" Esperando paquetes LoRa...");
+}
+
+// ---------- LOOP ----------
+void loop() {
+  if (lora_idle) {
+    lora_idle = false;
+    Radio.Rx(0);
+  }
+  Radio.IrqProcess();
+}

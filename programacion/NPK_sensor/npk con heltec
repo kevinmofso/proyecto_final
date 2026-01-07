@@ -1,0 +1,104 @@
+#include <Arduino.h>
+
+// Pines para RS485
+#define DE 22
+#define RE 23
+#define RXD2 16
+#define TXD2 17
+
+HardwareSerial mod(2); // UART2
+
+// Comandos Modbus para NPK
+const byte nitro[] = {0x01, 0x03, 0x00, 0x1E, 0x00, 0x01, 0xE4, 0x0C};
+const byte phos[]  = {0x01, 0x03, 0x00, 0x1F, 0x00, 0x01, 0xB5, 0xCC};
+const byte pota[]  = {0x01, 0x03, 0x00, 0x20, 0x00, 0x01, 0x85, 0xC0};
+
+// CRC16 Modbus
+uint16_t modbusCRC(const byte *buf, uint8_t len) {
+  uint16_t crc = 0xFFFF;
+  for (uint8_t pos = 0; pos < len; pos++) {
+    crc ^= (uint16_t)buf[pos];
+    for (uint8_t i = 0; i < 8; i++) {
+      if (crc & 0x0001) crc = (crc >> 1) ^ 0xA001;
+      else crc >>= 1;
+    }
+  }
+  return crc;
+}
+
+void setup() {
+  Serial.begin(115200);
+  mod.begin(9600, SERIAL_8N1, RXD2, TXD2);
+
+  pinMode(RE, OUTPUT);
+  pinMode(DE, OUTPUT);
+  digitalWrite(RE, LOW);
+  digitalWrite(DE, LOW);
+
+  Serial.println("=== Lectura NPK ESP32 ===");
+  delay(1000);
+}
+
+void loop() {
+  int valN = readSensor(nitro);
+  delay(200);
+  int valP = readSensor(phos);
+  delay(200);
+  int valK = readSensor(pota);
+  delay(200);
+
+  Serial.println("------ RESULTADOS ------");
+  Serial.print("Nitrogeno (N): "); Serial.print(valN); Serial.println(" mg/kg");
+  Serial.print("Fosforo  (P): "); Serial.print(valP); Serial.println(" mg/kg");
+  Serial.print("Potasio  (K): "); Serial.print(valK); Serial.println(" mg/kg");
+  Serial.println("------------------------\n");
+
+  delay(3000);
+}
+
+int readSensor(const byte* cmd) {
+  // Limpiar buffer UART
+  while (mod.available()) mod.read();
+
+  // Transmitir comando
+  digitalWrite(DE, HIGH);
+  digitalWrite(RE, HIGH);
+  delay(5);
+  mod.write(cmd, 8);
+  mod.flush();
+  delay(5);
+  digitalWrite(DE, LOW);
+  digitalWrite(RE, LOW);
+
+  // Leer respuesta completa con timeout
+  byte buf[32]; uint8_t index = 0;
+  unsigned long start = millis();
+  while (millis() - start < 500) {
+    while (mod.available()) {
+      if (index < sizeof(buf)) buf[index++] = mod.read();
+    }
+  }
+
+  // Buscar bloque válido 01 03 02 XX XX CRC_L CRC_H
+  for (uint8_t i = 0; i + 6 < index; i++) {
+    if (buf[i] == 0x01 && buf[i+1] == 0x03 && buf[i+2] == 0x02) {
+      uint16_t crc_calc = modbusCRC(buf + i, 5);
+      uint16_t crc_recv = (uint16_t)buf[i+5] | ((uint16_t)buf[i+6] << 8);
+      if (crc_calc != crc_recv) {
+        Serial.println("Error: CRC invalido");
+        continue;
+      }
+      int value = (buf[i+3] << 8) | buf[i+4];
+      return value;
+    }
+  }
+
+  Serial.println("Error: no se encontró bloque válido");
+  Serial.print("Datos recibidos ("); Serial.print(index); Serial.println(" bytes):");
+  for (uint8_t i=0; i<index; i++) {
+    if (buf[i]<0x10) Serial.print("0");
+    Serial.print(buf[i], HEX); Serial.print(" ");
+  }
+  Serial.println();
+  return -1;
+}
